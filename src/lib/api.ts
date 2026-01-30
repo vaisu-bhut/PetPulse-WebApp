@@ -57,24 +57,59 @@ export interface UpdatePetRequest {
 export interface Video {
     id: string;
     pet_id: number;
-    file_path: string;
-    status: string;
-    activities: any;
+    gcs_path: string;
     mood: string | null;
     description: string | null;
     created_at: string;
-    updated_at: string;
-    is_unusual: boolean;
-    pet?: Pet;
 }
 
 export interface VideoListResponse {
     videos: Video[];
     total: number;
     page: number;
-    per_page: number;
-    total_pages: number;
 }
+
+export interface Alert {
+    id: string;
+    pet_id: number;
+    pet_name: string | null;
+    alert_type: string;
+    severity_level: string;
+    message: string | null;
+    critical_indicators: any;
+    recommended_actions: any;
+    created_at: string;
+    outcome: string | null;
+    user_response: string | null;
+    user_acknowledged_at: string | null;
+}
+
+export interface AlertListResponse {
+    alerts: Alert[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface DailyDigest {
+    id: string;
+    pet_id: number;
+    date: string;
+    summary: string;
+    moods: any | null;
+    activities: any | null;
+    unusual_events: any | null;
+    total_videos: number;
+    created_at: string;
+}
+
+export interface DigestListResponse {
+    digests: DailyDigest[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
 
 // Helper function to handle responses
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -198,8 +233,8 @@ export const petApi = {
 
 // Video API
 export const videoApi = {
-    listUserVideos: async (page: number = 1, perPage: number = 10): Promise<VideoListResponse> => {
-        const response = await fetch(`${API_BASE}/videos?page=${page}&per_page=${perPage}`, {
+    listUserVideos: async (page = 1, pageSize = 10): Promise<VideoListResponse> => {
+        const response = await fetch(`${API_BASE}/videos?page=${page}&page_size=${pageSize}`, {
             credentials: 'include',
         });
         return handleResponse<VideoListResponse>(response);
@@ -210,5 +245,72 @@ export const videoApi = {
             credentials: 'include',
         });
         return handleResponse<VideoListResponse>(response);
+    },
+};
+
+// Alert API
+export const alertApi = {
+    // List all alerts for authenticated user
+    listUserAlerts: async (page = 1, pageSize = 10, severityLevel?: string): Promise<AlertListResponse> => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            page_size: pageSize.toString(),
+        });
+        if (severityLevel) params.append('severity_level', severityLevel);
+
+        const response = await fetch(`${API_BASE}/alerts?${params}`, {
+            credentials: 'include',
+        });
+        return handleResponse<AlertListResponse>(response);
+    },
+
+    // List alerts for specific pet
+    listPetAlerts: async (petId: number, page = 1, pageSize = 10, severityLevel?: string): Promise<AlertListResponse> => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            page_size: pageSize.toString(),
+        });
+        if (severityLevel) params.append('severity_level', severityLevel);
+
+        const response = await fetch(`${API_BASE}/pets/${petId}/alerts?${params}`, {
+            credentials: 'include',
+        });
+        return handleResponse<AlertListResponse>(response);
+    },
+
+    // Acknowledge an alert
+    acknowledge: async (alertId: string, userResponse: string): Promise<{ status: string }> => {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ response: userResponse }),
+        });
+        return handleResponse<{ status: string }>(response);
+    },
+
+    // Resolve an alert
+    resolve: async (alertId: string): Promise<{ status: string }> => {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}/resolve`, {
+            method: 'POST',
+            credentials: 'include',
+        });
+        return handleResponse<{ status: string }>(response);
+    },
+};
+
+// Daily Digest API
+export const digestApi = {
+    // List digests for specific pet
+    listPetDigests: async (petId: number, page = 1, pageSize = 10): Promise<DigestListResponse> => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            page_size: pageSize.toString(),
+        });
+
+        const response = await fetch(`${API_BASE}/pets/${petId}/digests?${params}`, {
+            credentials: 'include',
+        });
+        return handleResponse<DigestListResponse>(response);
     },
 };

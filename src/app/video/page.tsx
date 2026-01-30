@@ -107,7 +107,7 @@ export default function VideoLibraryPage() {
     }
 
     const groupedVideos = videoData ? groupVideosByDate(videoData.videos) : {};
-    const totalPages = videoData?.total_pages || 0;
+    const totalPages = videoData ? Math.ceil(videoData.total / perPage) : 0;
 
     return (
         <DashboardLayout>
@@ -142,7 +142,6 @@ export default function VideoLibraryPage() {
 
                                     <div className="space-y-6">
                                         {Object.entries(petGroups).map(([petId, videos]) => {
-                                            const pet = videos[0]?.pet;
                                             return (
                                                 <div key={petId} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-6">
                                                     <Link
@@ -151,13 +150,13 @@ export default function VideoLibraryPage() {
                                                     >
                                                         <div className="h-10 w-10 rounded-full bg-indigo-500/10 flex items-center justify-center">
                                                             <span className="text-indigo-400 font-bold">
-                                                                {pet?.name?.[0]?.toUpperCase() || '?'}
+                                                                #{petId}
                                                             </span>
                                                         </div>
                                                         <div>
-                                                            <h3 className="font-medium text-white">{pet?.name || 'Unknown Pet'}</h3>
+                                                            <h3 className="font-medium text-white">Pet #{petId}</h3>
                                                             <p className="text-sm text-neutral-400">
-                                                                {pet?.species} • {videos.length} {videos.length === 1 ? 'video' : 'videos'}
+                                                                {videos.length} {videos.length === 1 ? 'video' : 'videos'}
                                                             </p>
                                                         </div>
                                                     </Link>
