@@ -82,6 +82,10 @@ export interface Alert {
     outcome: string | null;
     user_response: string | null;
     user_acknowledged_at: string | null;
+    user_notified_at: string | null;
+    notification_sent: boolean;
+    notification_channels: any;
+    intervention_action: string | null;
 }
 
 export interface AlertListResponse {
@@ -108,6 +112,65 @@ export interface DigestListResponse {
     total: number;
     page: number;
     page_size: number;
+}
+
+export interface EmergencyContact {
+    id: number;
+    user_id: number;
+    contact_type: string;
+    name: string;
+    phone: string;
+    email?: string;
+    address?: string;
+    notes?: string;
+    priority: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CreateEmergencyContactRequest {
+    contact_type: string;
+    name: string;
+    phone: string;
+    email?: string;
+    address?: string;
+    notes?: string;
+    priority?: number;
+}
+
+export interface UpdateEmergencyContactRequest {
+    contact_type?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    notes?: string;
+    priority?: number;
+    is_active?: boolean;
+}
+
+export interface QuickAction {
+    id: string;
+    alert_id: string;
+    emergency_contact_id: number;
+    contact_name: string;
+    contact_phone: string;
+    action_type: string;
+    message: string;
+    video_clips: any;
+    status: string;
+    sent_at?: string;
+    acknowledged_at?: string;
+    error_message?: string;
+    created_at: string;
+}
+
+export interface CreateQuickActionRequest {
+    emergency_contact_id: number;
+    action_type: string;
+    message: string;
+    video_clip_ids?: string[];
 }
 
 
@@ -312,5 +375,63 @@ export const digestApi = {
             credentials: 'include',
         });
         return handleResponse<DigestListResponse>(response);
+    },
+};
+
+// Emergency Contacts API
+export const emergencyContactApi = {
+    list: async (): Promise<EmergencyContact[]> => {
+        const response = await fetch(`${API_BASE}/emergency-contacts`, {
+            credentials: 'include',
+        });
+        return handleResponse<EmergencyContact[]>(response);
+    },
+
+    create: async (data: CreateEmergencyContactRequest): Promise<EmergencyContact> => {
+        const response = await fetch(`${API_BASE}/emergency-contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(data),
+        });
+        return handleResponse<EmergencyContact>(response);
+    },
+
+    update: async (id: number, data: UpdateEmergencyContactRequest): Promise<EmergencyContact> => {
+        const response = await fetch(`${API_BASE}/emergency-contacts/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(data),
+        });
+        return handleResponse<EmergencyContact>(response);
+    },
+
+    delete: async (id: number): Promise<void> => {
+        const response = await fetch(`${API_BASE}/emergency-contacts/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        return handleResponse<void>(response);
+    },
+};
+
+// Quick Actions API
+export const quickActionApi = {
+    execute: async (alertId: string, data: CreateQuickActionRequest): Promise<QuickAction> => {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}/quick-actions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(data),
+        });
+        return handleResponse<QuickAction>(response);
+    },
+
+    listForAlert: async (alertId: string): Promise<QuickAction[]> => {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}/quick-actions`, {
+            credentials: 'include',
+        });
+        return handleResponse<QuickAction[]>(response);
     },
 };

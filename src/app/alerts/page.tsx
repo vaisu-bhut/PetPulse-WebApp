@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
-import { alertApi, type Alert } from '@/lib/api';
-import { AlertTriangle, CheckCircle, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { alertApi, emergencyContactApi, quickActionApi, type Alert, type EmergencyContact, type QuickAction, type CreateQuickActionRequest } from '@/lib/api';
+import { AlertTriangle, CheckCircle, XCircle, ChevronLeft, ChevronRight, Phone, MessageSquare, Send, History, Video, ExternalLink, Bot } from "lucide-react";
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AlertsPage() {
@@ -17,6 +17,16 @@ export default function AlertsPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [severityFilter, setSeverityFilter] = useState<string>('');
     const ALERTS_PER_PAGE = 10;
+
+    // Quick Action State
+    const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+    const [quickActions, setQuickActions] = useState<Record<string, QuickAction[]>>({});
+    const [selectedAlertForAction, setSelectedAlertForAction] = useState<Alert | null>(null);
+    const [showQuickActionDialog, setShowQuickActionDialog] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
+    const [actionMessage, setActionMessage] = useState('');
+    const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
+    const [selectedActionType, setSelectedActionType] = useState('sms');
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -72,6 +82,88 @@ export default function AlertsPage() {
         } catch (error) {
             console.error('Failed to resolve alert:', error);
             alert('Failed to resolve alert');
+        }
+    };
+
+    // Quick Actions Logic
+    useEffect(() => {
+        if (user) {
+            loadContacts();
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (alerts.length > 0) {
+            loadQuickActionsForVisibleAlerts();
+        }
+    }, [alerts]);
+
+    const loadContacts = async () => {
+        try {
+            const data = await emergencyContactApi.list();
+            setContacts(data);
+        } catch (error) {
+            console.error('Failed to load contacts:', error);
+        }
+    };
+
+    const loadQuickActionsForVisibleAlerts = async () => {
+        const actionsMap: Record<string, QuickAction[]> = {};
+        await Promise.all(alerts.map(async (alert) => {
+            try {
+                const actions = await quickActionApi.listForAlert(alert.id);
+                actionsMap[alert.id] = actions;
+            } catch (error) {
+                console.error(`Failed to load actions for alert ${alert.id}:`, error);
+            }
+        }));
+        setQuickActions(prev => ({ ...prev, ...actionsMap }));
+    };
+
+    const handleOpenQuickAction = (alert: Alert) => {
+        setSelectedAlertForAction(alert);
+
+        // Generate default message
+        const petName = alert.pet_name || 'your pet';
+        const defaultMsg = `🚨 URGENT: ${petName} is showing unusual behavior (${alert.alert_type}). Please check PetPulse immediately.`;
+        setActionMessage(defaultMsg);
+
+        // Default to first contact if available
+        if (contacts.length > 0 && !selectedContactId) {
+            setSelectedContactId(contacts[0].id);
+        }
+
+        setShowQuickActionDialog(true);
+    };
+
+    const handleExecuteAction = async () => {
+        if (!selectedAlertForAction || !selectedContactId) return;
+
+        setLoadingAction(true);
+        try {
+            const request: CreateQuickActionRequest = {
+                emergency_contact_id: selectedContactId,
+                action_type: selectedActionType,
+                message: actionMessage,
+                video_clip_ids: []
+            };
+
+            await quickActionApi.execute(selectedAlertForAction.id, request);
+
+            // Refresh actions
+            const actions = await quickActionApi.listForAlert(selectedAlertForAction.id);
+            setQuickActions(prev => ({
+                ...prev,
+                [selectedAlertForAction.id]: actions
+            }));
+
+            setShowQuickActionDialog(false);
+            alert('Quick action sent successfully!');
+        } catch (error: any) {
+            console.error('Failed to execute action:', error);
+            alert(error.message || 'Failed to send action');
+        } finally {
+            setLoadingAction(false);
         }
     };
 
@@ -214,7 +306,114 @@ export default function AlertsPage() {
                                                 </div>
                                             )}
 
+                                            {/* Notification Information */}
+                                            {alert.notification_sent && (
+                                                <div className="mb-4 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                                    <p className="text-xs font-medium text-blue-400 mb-3">📧 Notification Delivery</p>
+
+                                                    {/* Notification Channels */}
+                                                    {alert.notification_channels && (
+                                                        <div className="mb-3">
+                                                            <p className="text-xs text-neutral-500 mb-2">Channels Used:</p>
+                                                            <div className="flex gap-2 flex-wrap">
+                                                                {alert.notification_channels.email && (
+                                                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/30">
+                                                                        ✉️ Email
+                                                                    </span>
+                                                                )}
+                                                                {alert.notification_channels.sms && (
+                                                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                                                                        💬 SMS
+                                                                    </span>
+                                                                )}
+                                                                {alert.notification_channels.push && (
+                                                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                                                                        🔔 Push
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Acknowledgement Timeline */}
+                                                    {alert.user_notified_at && (
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-3 text-xs">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="h-2 w-2 rounded-full bg-blue-400"></div>
+                                                                    <span className="text-neutral-400">Notified:</span>
+                                                                    <span className="text-neutral-300">
+                                                                        {new Date(alert.user_notified_at).toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            {alert.user_acknowledged_at && (
+                                                                <>
+                                                                    <div className="flex items-center gap-3 text-xs">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                                                                            <span className="text-neutral-400">Acknowledged:</span>
+                                                                            <span className="text-neutral-300">
+                                                                                {new Date(alert.user_acknowledged_at).toLocaleString()}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-xs text-neutral-500 ml-4">
+                                                                        Response time: {Math.round((new Date(alert.user_acknowledged_at).getTime() - new Date(alert.user_notified_at).getTime()) / 1000 / 60)} minutes
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {!alert.user_acknowledged_at && (
+                                                                <div className="flex items-center gap-2 text-xs text-amber-400">
+                                                                    <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse"></div>
+                                                                    <span>Awaiting acknowledgement via website</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Autonomous Action */}
+                                            {alert.intervention_action && (
+                                                <div className="mb-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg flex items-start gap-3">
+                                                    <div className="p-2 bg-indigo-500/20 rounded-full">
+                                                        <Bot className="h-4 w-4 text-indigo-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-medium text-indigo-300">Autonomous Action Taken</p>
+                                                        <p className="text-xs text-indigo-400/80 mt-1">
+                                                            {alert.intervention_action}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Actions */}
+                                            {/* Quick Actions History */}
+                                            {quickActions[alert.id] && quickActions[alert.id].length > 0 && (
+                                                <div className="mb-4">
+                                                    <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-2">
+                                                        <History className="h-3 w-3" />
+                                                        Action History
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {quickActions[alert.id].map(action => (
+                                                            <div key={action.id} className="text-xs bg-neutral-900 rounded p-2 flex justify-between items-center">
+                                                                <span className="text-neutral-300">
+                                                                    {action.action_type === 'call' ? '📞' : '💬'} {action.action_type === 'call' ? 'Called' : 'Messaged'} {action.contact_name}
+                                                                </span>
+                                                                <span className="text-neutral-500">
+                                                                    {new Date(action.created_at).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {alert.outcome !== 'Resolved' && (
                                                 <div className="flex gap-3">
                                                     {!alert.user_acknowledged_at && (
@@ -233,6 +432,15 @@ export default function AlertsPage() {
                                                         <XCircle className="h-4 w-4" />
                                                         Resolve
                                                     </button>
+                                                    {(alert.severity_level.toLowerCase() === 'critical' || alert.severity_level.toLowerCase() === 'high') && (
+                                                        <button
+                                                            onClick={() => handleOpenQuickAction(alert)}
+                                                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition ml-auto"
+                                                        >
+                                                            <Send className="h-4 w-4" />
+                                                            Take Action
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -267,7 +475,107 @@ export default function AlertsPage() {
                         )}
                     </div>
                 )}
+
+                {/* Quick Action Dialog */}
+                {showQuickActionDialog && selectedAlertForAction && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                        <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                            <h3 className="text-xl font-semibold text-white mb-6">
+                                Emergency Quick Action
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-neutral-300 mb-2">
+                                        Select Emergency Contact
+                                    </label>
+                                    <select
+                                        value={selectedContactId || ''}
+                                        onChange={(e) => setSelectedContactId(Number(e.target.value))}
+                                        className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                                    >
+                                        <option value="" disabled>Select a contact</option>
+                                        {contacts.map(contact => (
+                                            <option key={contact.id} value={contact.id}>
+                                                {contact.name} ({contact.contact_type}) - {contact.phone}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {contacts.length === 0 && (
+                                        <p className="text-xs text-red-400 mt-1">
+                                            No emergency contacts found. <a href="/profile" className="underline">Add one in your profile.</a>
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-neutral-300 mb-2">
+                                        Action Type
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setSelectedActionType('sms')}
+                                            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border ${selectedActionType === 'sms' ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-neutral-800 text-neutral-400 hover:bg-neutral-900'}`}
+                                        >
+                                            <MessageSquare className="h-4 w-4" />
+                                            SMS
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedActionType('call')}
+                                            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border ${selectedActionType === 'call' ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-neutral-800 text-neutral-400 hover:bg-neutral-900'}`}
+                                        >
+                                            <Phone className="h-4 w-4" />
+                                            Call
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-neutral-300 mb-2">
+                                        Message
+                                    </label>
+                                    <textarea
+                                        value={actionMessage}
+                                        onChange={(e) => setActionMessage(e.target.value)}
+                                        className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                                        rows={4}
+                                    />
+                                    <p className="text-xs text-neutral-500 mt-1">
+                                        This message will be sent immediately to the contact.
+                                    </p>
+                                </div>
+
+                                <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-start gap-3">
+                                    <Video className="h-5 w-5 text-blue-400 flex-shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-medium text-blue-300">Video Evidence Attached</p>
+                                        <p className="text-xs text-blue-400/80">
+                                            The latest video clip of the reported behavior will be included in the message link.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowQuickActionDialog(false)}
+                                    className="flex-1 rounded-lg border border-neutral-800 px-4 py-3 font-medium text-white hover:bg-neutral-900 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleExecuteAction}
+                                    disabled={loadingAction || !selectedContactId}
+                                    className="flex-1 rounded-lg bg-red-600 px-4 py-3 font-medium text-white hover:bg-red-700 disabled:opacity-50 transition flex items-center justify-center gap-2"
+                                >
+                                    {loadingAction ? 'Sending...' : 'Send Now'}
+                                    {!loadingAction && <Send className="h-4 w-4" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }
