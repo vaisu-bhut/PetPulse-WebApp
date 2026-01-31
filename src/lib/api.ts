@@ -1,6 +1,6 @@
 // API Client for PetPulse Backend
 // Call backend directly to avoid Next.js proxy cookie issues
-const API_BASE = 'http://localhost:3000';
+const API_BASE = '/api';
 
 // Types
 export interface User {
@@ -339,6 +339,14 @@ export const alertApi = {
             credentials: 'include',
         });
         return handleResponse<AlertListResponse>(response);
+    },
+
+    // Get single alert
+    get: async (alertId: string): Promise<Alert> => {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}`, {
+            credentials: 'include',
+        });
+        return handleResponse<Alert>(response);
     },
 
     // Acknowledge an alert

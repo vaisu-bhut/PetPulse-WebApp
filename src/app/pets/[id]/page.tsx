@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter, useParams } from 'next/navigation';
-import { petApi, videoApi, type Pet, type Video } from '@/lib/api';
-import { ArrowLeft, Calendar, Save, Trash2, Play } from "lucide-react";
+import { petApi, videoApi, alertApi, type Pet, type Video, type Alert } from '@/lib/api';
+import { ArrowLeft, Calendar, Save, Trash2, Play, AlertTriangle, X, Activity } from "lucide-react";
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 
@@ -24,7 +24,14 @@ export default function PetProfilePage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-    const VIDEOS_PER_PAGE = 6;
+    const VIDEOS_PER_PAGE = 2; // Compact limit
+
+    // Alerts State
+    const [alerts, setAlerts] = useState<Alert[]>([]);
+    const [alertsLoading, setAlertsLoading] = useState(false);
+    const [alertsPage, setAlertsPage] = useState(1);
+    const [alertsTotalPages, setAlertsTotalPages] = useState(1);
+    const ALERTS_PER_PAGE = 4; // Compact limit
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -72,6 +79,24 @@ export default function PetProfilePage() {
         };
         fetchVideos();
     }, [user, petId, currentPage, VIDEOS_PER_PAGE]);
+
+    useEffect(() => {
+        const fetchAlerts = async () => {
+            if (user && petId) {
+                setAlertsLoading(true);
+                try {
+                    const data = await alertApi.listPetAlerts(petId, alertsPage, ALERTS_PER_PAGE);
+                    setAlerts(data.alerts);
+                    setAlertsTotalPages(Math.ceil(data.total / ALERTS_PER_PAGE));
+                } catch (error) {
+                    console.error('Failed to fetch alerts:', error);
+                } finally {
+                    setAlertsLoading(false);
+                }
+            }
+        };
+        fetchAlerts();
+    }, [user, petId, alertsPage]);
 
     const handleEdit = () => {
         setFormData({
@@ -132,286 +157,289 @@ export default function PetProfilePage() {
 
     return (
         <DashboardLayout>
-            <div className="p-8">
-                <Link
-                    href="/pets"
-                    className="inline-flex items-center gap-2 text-neutral-400 hover:text-white transition mb-6"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Pets
-                </Link>
-
-                {/* Header with back button and delete */}
-                <div className="flex items-start justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold text-white">{pet.name}</h1>
-                        <p className="text-neutral-400 mt-2">{pet.species} • {pet.breed}</p>
+            <div className="h-[calc(100vh)] flex flex-col p-6 md:p-8 overflow-hidden bg-neutral-50 box-border">
+                {/* Header Area - Compact */}
+                <div className="flex-none flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                        <Link
+                            href="/pets"
+                            className="flex items-center justify-center p-2 rounded-lg bg-white border border-neutral-200 text-neutral-500 hover:text-indigo-600 hover:border-indigo-200 transition"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                        </Link>
+                        <div>
+                            <h1 className="text-2xl font-bold text-neutral-900 flex items-center gap-2">
+                                {pet.name}
+                                <span className="text-sm font-normal text-neutral-500 px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200">
+                                    {pet.species}
+                                </span>
+                            </h1>
+                        </div>
                     </div>
-                    <button
-                        onClick={handleDelete}
-                        className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20 transition"
-                    >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Pet
-                    </button>
                 </div>
 
-                {/* 2-Column Grid Layout */}
-                <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left Column - Pet Details Card */}
-                    <div className="lg:col-span-1">
-                        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-8 lg:sticky lg:top-8">
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-neutral-300 mb-2">Name</label>
-                                    {editing ? (
-                                        <input
-                                            type="text"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                            className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
-                                        />
-                                    ) : (
-                                        <p className="text-white px-4 py-3 rounded-lg bg-neutral-900">{pet.name}</p>
-                                    )}
+                {/* Main Content Grid - Fills remaining height */}
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
+
+                    {/* Quadrant 1: Pet Profile (Edit) */}
+                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm flex flex-col overflow-hidden h-full">
+                        <div className="p-4 border-b border-neutral-100 flex-none bg-neutral-50/50">
+                            <h2 className="font-bold text-neutral-900">Pet Details</h2>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-neutral-500 mb-1">Name</label>
+                                        {editing ? (
+                                            <input
+                                                type="text"
+                                                value={formData.name}
+                                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                                className="w-full text-sm rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
+                                            />
+                                        ) : (
+                                            <p className="text-sm font-medium text-neutral-900">{pet.name}</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-neutral-500 mb-1">Age</label>
+                                        {editing ? (
+                                            <input
+                                                type="number"
+                                                value={formData.age}
+                                                onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || 0 })}
+                                                className="w-full text-sm rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
+                                            />
+                                        ) : (
+                                            <p className="text-sm font-medium text-neutral-900">{pet.age} years</p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-neutral-300 mb-2">Species</label>
+                                        <label className="block text-xs font-medium text-neutral-500 mb-1">Species</label>
                                         {editing ? (
                                             <input
                                                 type="text"
                                                 value={formData.species}
                                                 onChange={(e) => setFormData({ ...formData, species: e.target.value })}
-                                                className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                                                className="w-full text-sm rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
                                             />
                                         ) : (
-                                            <p className="text-white px-4 py-3 rounded-lg bg-neutral-900">{pet.species}</p>
+                                            <p className="text-sm font-medium text-neutral-900">{pet.species}</p>
                                         )}
                                     </div>
-
                                     <div>
-                                        <label className="block text-sm font-medium text-neutral-300 mb-2">Breed</label>
+                                        <label className="block text-xs font-medium text-neutral-500 mb-1">Breed</label>
                                         {editing ? (
                                             <input
                                                 type="text"
                                                 value={formData.breed}
                                                 onChange={(e) => setFormData({ ...formData, breed: e.target.value })}
-                                                className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
+                                                className="w-full text-sm rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
                                             />
                                         ) : (
-                                            <p className="text-white px-4 py-3 rounded-lg bg-neutral-900">{pet.breed}</p>
+                                            <p className="text-sm font-medium text-neutral-900">{pet.breed}</p>
                                         )}
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-neutral-300 mb-2">Age</label>
-                                    {editing ? (
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={formData.age}
-                                            onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || 0 })}
-                                            className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
-                                        />
-                                    ) : (
-                                        <p className="text-white px-4 py-3 rounded-lg bg-neutral-900">{pet.age} years old</p>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-neutral-300 mb-2">Bio</label>
+                                    <label className="block text-xs font-medium text-neutral-500 mb-1">Attributes & Bio</label>
                                     {editing ? (
                                         <textarea
                                             value={formData.bio}
                                             onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                                            className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-white focus:border-indigo-500 focus:outline-none"
-                                            rows={4}
+                                            className="w-full text-sm rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
+                                            rows={3}
                                         />
                                     ) : (
-                                        <p className="text-white px-4 py-3 rounded-lg bg-neutral-900 whitespace-pre-wrap">{pet.bio}</p>
+                                        <p className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-lg">{pet.bio || "No bio added."}</p>
                                     )}
                                 </div>
+                            </div>
+                        </div>
+                        {/* Footer: Fixed height to prevent layout jumps on button toggle */}
+                        <div className="p-4 border-t border-neutral-100 flex-none bg-neutral-50/50 h-[72px] flex items-center gap-2">
+                            {editing ? (
+                                <>
+                                    <button onClick={() => setEditing(false)} className="flex-1 h-10 text-sm font-medium text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-100 transition">Cancel</button>
+                                    <button onClick={handleSave} disabled={updating} className="flex-1 h-10 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition">Save</button>
+                                </>
+                            ) : (
+                                <button onClick={handleEdit} className="w-full h-10 text-sm font-medium text-indigo-600 border border-indigo-200 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition">Edit Details</button>
+                            )}
+                        </div>
+                    </div>
 
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
-                                        <Calendar className="h-4 w-4" />
-                                        Added
-                                    </label>
-                                    <p className="text-white px-4 py-3 rounded-lg bg-neutral-900">
-                                        {new Date(pet.created_at).toLocaleDateString()}
-                                    </p>
-                                </div>
+                    {/* Quadrant 2: Wellness Pulse (Swaped to Top Right) */}
+                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm flex flex-col overflow-hidden h-full">
+                        <div className="p-4 border-b border-neutral-100 flex-none bg-neutral-50/50">
+                            <h2 className="font-bold text-neutral-900 flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-green-500" />
+                                Wellness Pulse
+                            </h2>
+                        </div>
+                        <div className="flex-1 p-6 flex flex-col justify-center items-center">
+                            {/* Graphical Donut Chart Visual */}
+                            <div className="relative w-40 h-40">
+                                {(() => {
+                                    const total = alerts.length || 1;
+                                    const crit = alerts.filter(a => a.severity_level === 'critical').length;
+                                    const high = alerts.filter(a => a.severity_level === 'high').length;
+                                    const med = alerts.filter(a => a.severity_level === 'medium').length; // Treating medium as warning
 
-                                <div className="flex gap-3 pt-4">
-                                    {editing ? (
-                                        <>
-                                            <button
-                                                onClick={() => setEditing(false)}
-                                                className="flex-1 rounded-lg border border-neutral-800 px-4 py-3 font-medium text-white hover:bg-neutral-900 transition"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSave}
-                                                disabled={updating}
-                                                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition"
-                                            >
-                                                <Save className="h-4 w-4" />
-                                                {updating ? 'Saving...' : 'Save Changes'}
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <button
-                                            onClick={handleEdit}
-                                            className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-medium text-white hover:bg-indigo-700 transition"
+                                    // Calculate degrees
+                                    const critDeg = (crit / total) * 360;
+                                    const highDeg = (high / total) * 360;
+                                    const medDeg = (med / total) * 360;
+                                    const remDeg = 360 - (critDeg + highDeg + medDeg); // Green/Safe
+
+                                    // Create conic gradient string
+                                    // Order: Red -> Orange -> Yellow -> Green
+                                    const grad = `conic-gradient(
+                                        #ef4444 0deg ${critDeg}deg, 
+                                        #f97316 ${critDeg}deg ${critDeg + highDeg}deg,
+                                        #eab308 ${critDeg + highDeg}deg ${critDeg + highDeg + medDeg}deg,
+                                        #4ade80 ${critDeg + highDeg + medDeg}deg 360deg
+                                    )`;
+
+                                    return (
+                                        <div
+                                            className="w-full h-full rounded-full"
+                                            style={{ background: grad }}
                                         >
-                                            Edit Profile
-                                        </button>
-                                    )}
+                                            <div className="absolute inset-4 bg-white rounded-full flex flex-col items-center justify-center">
+                                                <span className="text-3xl font-bold text-neutral-900">{alerts.length}</span>
+                                                <span className="text-xs text-neutral-500 uppercase tracking-wide">Alerts</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            <div className="mt-6 w-full max-w-xs grid grid-cols-3 gap-2 text-center text-xs">
+                                <div className="flex flex-col items-center">
+                                    <div className="w-3 h-3 rounded-full bg-red-500 mb-1" />
+                                    <span className="text-neutral-600">Critical</span>
+                                    <span className="font-bold">{alerts.filter(a => a.severity_level === 'critical').length}</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="w-3 h-3 rounded-full bg-orange-500 mb-1" />
+                                    <span className="text-neutral-600">Warning</span>
+                                    <span className="font-bold">{alerts.filter(a => ['high', 'medium'].includes(a.severity_level)).length}</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="w-3 h-3 rounded-full bg-green-400 mb-1" />
+                                    <span className="text-neutral-600">Normal</span>
+                                    <span className="font-bold text-green-600">OK</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Right Column - Videos, Alerts, Digests */}
-                    <div className="lg:col-span-2 space-y-8">
-                        {/* Videos Section */}
-                        <div>
-                            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                                <Play className="h-5 w-5 text-indigo-400" />
-                                Videos
+                    {/* Quadrant 3: Recent Videos */}
+                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm flex flex-col overflow-hidden h-full">
+                        <div className="p-4 border-b border-neutral-100 flex items-center justify-between flex-none bg-neutral-50/50">
+                            <h2 className="font-bold text-neutral-900 flex items-center gap-2">
+                                <Play className="h-4 w-4 text-indigo-500" />
+                                Recent Videos
                             </h2>
-
+                            <Link href="/video" className="text-xs text-indigo-600 font-medium hover:underline">View All</Link>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                             {videosLoading ? (
-                                <div className="text-center py-8 rounded-2xl border border-neutral-800 bg-neutral-950">
-                                    <p className="text-neutral-400">Loading videos...</p>
-                                </div>
+                                <p className="text-sm text-neutral-400 text-center py-4">Loading...</p>
                             ) : videos.length === 0 ? (
-                                <div className="text-center py-8 rounded-2xl border border-neutral-800 bg-neutral-950">
-                                    <Play className="h-10 w-10 text-neutral-600 mx-auto mb-3" />
-                                    <p className="text-neutral-400">No videos yet</p>
-                                    <p className="text-sm text-neutral-500 mt-2">Videos will appear here once processed</p>
-                                </div>
+                                <p className="text-sm text-neutral-400 text-center py-4">No recent videos.</p>
                             ) : (
-                                <>
-                                    <div className="space-y-3">
-                                        {videos.map((video) => {
-                                            const isActive = activeVideoId === video.id;
-                                            const moodColor = video.mood === 'Alert and Reactive' ? 'border-red-500/30' :
-                                                video.mood === 'Playful' ? 'border-green-500/30' :
-                                                    video.mood === 'Calm' ? 'border-blue-500/30' :
-                                                        'border-neutral-700';
-
-                                            return (
-                                                <div
-                                                    key={video.id}
-                                                    className={`rounded-lg border ${moodColor} bg-neutral-950 overflow-hidden transition-all ${isActive ? 'ring-2 ring-indigo-500' : ''}`}
-                                                >
-                                                    {isActive ? (
-                                                        // Expanded video player - LIMITED HEIGHT
-                                                        <div className="bg-neutral-900 relative max-h-96 flex items-center justify-center">
-                                                            <video
-                                                                className="w-full max-h-96 object-contain"
-                                                                controls
-                                                                autoPlay
-                                                                preload="auto"
-                                                            >
-                                                                <source src={`http://localhost:3000/videos/${video.id}/stream`} type="video/mp4" />
-                                                                Your browser does not support the video tag.
-                                                            </video>
-                                                            <button
-                                                                onClick={() => setActiveVideoId(null)}
-                                                                className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white px-3 py-1 rounded text-sm transition"
-                                                            >
-                                                                Close
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        // Compact preview card
-                                                        <div
-                                                            onClick={() => setActiveVideoId(video.id)}
-                                                            className="relative h-[150px] bg-gradient-to-br from-neutral-900 to-neutral-800 cursor-pointer group overflow-hidden"
-                                                        >
-                                                            {/* Gradient overlay */}
-                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10" />
-
-                                                            {/* Hover effect */}
-                                                            <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors z-10" />
-
-                                                            {/* Center play icon */}
-                                                            <div className="absolute inset-0 flex items-center justify-center z-20">
-                                                                <div className="text-center">
-                                                                    <Play className="h-12 w-12 text-white/90 mx-auto mb-2 group-hover:scale-110 transition-transform" />
-                                                                    <p className="text-white text-sm font-medium">Tap to View</p>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Video info at bottom */}
-                                                            <div className="absolute bottom-0 left-0 right-0 p-3 z-20">
-                                                                <div className="flex items-center justify-between text-xs mb-1">
-                                                                    <span className="text-white/80">
-                                                                        {new Date(video.created_at).toLocaleDateString('en-US', {
-                                                                            month: 'short',
-                                                                            day: 'numeric',
-                                                                            hour: 'numeric',
-                                                                            minute: '2-digit'
-                                                                        })}
-                                                                    </span>
-                                                                    {video.mood && (
-                                                                        <span className="px-2 py-0.5 rounded bg-white/10 text-white/90 backdrop-blur-sm">
-                                                                            {video.mood}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Description (always visible) */}
-                                                    {video.description && (
-                                                        <div className="p-3 border-t border-neutral-800">
-                                                            <p className="text-xs text-neutral-400 line-clamp-2">{video.description}</p>
-                                                        </div>
-                                                    )}
+                                <div className="grid grid-cols-2 gap-3">
+                                    {videos.slice(0, 2).map(video => (
+                                        <div key={video.id} className="relative aspect-video rounded-lg overflow-hidden border border-neutral-200 bg-black group max-h-[160px]"> {/* Added max-h constraint */}
+                                            {activeVideoId === video.id ? (
+                                                <>
+                                                    <video
+                                                        className="w-full h-full object-contain"
+                                                        controls autoPlay
+                                                        src={`http://localhost:8000/videos/${video.id}/stream`}
+                                                    />
+                                                    <button onClick={() => setActiveVideoId(null)} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="h-3 w-3" /></button>
+                                                </>
+                                            ) : (
+                                                <div onClick={() => setActiveVideoId(video.id)} className="w-full h-full cursor-pointer relative bg-neutral-900">
+                                                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                                                        <div className="bg-white/90 p-1.5 rounded-full shadow-lg group-hover:scale-110 transition"><Play className="h-3 w-3 text-indigo-600" /></div>
+                                                    </div>
+                                                    <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                                                        <p className="text-[10px] text-white font-medium truncate">{video.description || "No description"}</p>
+                                                        <p className="text-[10px] text-neutral-300">{new Date(video.created_at).toLocaleDateString()}</p>
+                                                    </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {/* Pagination Controls */}
-                                    {totalPages > 1 && (
-                                        <div className="flex items-center justify-between mt-6 px-4">
-                                            <button
-                                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                                disabled={currentPage === 1}
-                                                className="px-4 py-2 rounded-lg border border-neutral-800 bg-neutral-950 text-white hover:bg-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                                            >
-                                                Previous
-                                            </button>
-                                            <span className="text-sm text-neutral-400">
-                                                Page {currentPage} of {totalPages}
-                                            </span>
-                                            <button
-                                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                                disabled={currentPage === totalPages}
-                                                className="px-4 py-2 rounded-lg border border-neutral-800 bg-neutral-950 text-white hover:bg-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                                            >
-                                                Next
-                                            </button>
+                                            )}
                                         </div>
-                                    )}
-                                </>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     </div>
-                    {/* End Right Column */}
+
+                    {/* Quadrant 4: Recent Activities (Swapped to Bottom Right) */}
+                    <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm flex flex-col overflow-hidden h-full">
+                        <div className="p-4 border-b border-neutral-100 flex items-center justify-between flex-none bg-neutral-50/50">
+                            <h2 className="font-bold text-neutral-900 flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                                Recent Activities
+                            </h2>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setAlertsPage(p => Math.max(1, p - 1))} disabled={alertsPage === 1}
+                                    className="p-1 hover:bg-neutral-200 rounded text-neutral-500 disabled:opacity-30"
+                                >←</button>
+                                <span className="text-xs text-neutral-500 w-12 text-center">{alertsPage}/{alertsTotalPages}</span>
+                                <button
+                                    onClick={() => setAlertsPage(p => Math.min(alertsTotalPages, p + 1))} disabled={alertsPage === alertsTotalPages}
+                                    className="p-1 hover:bg-neutral-200 rounded text-neutral-500 disabled:opacity-30"
+                                >→</button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                            {alertsLoading ? (
+                                <p className="text-sm text-neutral-400 text-center py-4">Loading...</p>
+                            ) : alerts.length === 0 ? (
+                                <p className="text-sm text-neutral-400 text-center py-4">No recent activities.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {alerts.map(alert => (
+                                        <div
+                                            key={alert.id}
+                                            onClick={() => router.push(`/alerts/${alert.id}`)}
+                                            className="p-3 rounded-lg border border-neutral-100 bg-neutral-50 hover:border-indigo-200 cursor-pointer flex gap-3 group transition"
+                                        >
+                                            <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${alert.severity_level === 'critical' ? 'bg-red-500' : alert.severity_level === 'high' ? 'bg-orange-500' : 'bg-blue-500'}`} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="text-sm font-semibold text-neutral-900 group-hover:text-indigo-600 transition">{alert.alert_type}</span>
+                                                    <span className="text-[10px] text-neutral-400">{new Date(alert.created_at).toLocaleDateString()}</span>
+                                                </div>
+                                                <p className="text-xs text-neutral-600 truncate">{alert.message}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                 </div>
-                {/* End Grid */}
             </div>
-            {/* End Container */}
         </DashboardLayout>
     );
 }
+
+// Add this to your global CSS or just use standard Tailwind
+// .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+// .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+// .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 4px; }
+// .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d4d4d4; }
