@@ -43,7 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
 
                 <nav className="space-y-1">
-                    <NavItem href="/" icon={<LayoutDashboard />} label="Dashboard" active={pathname === '/'} />
+                    <NavItem href="/dashboard" icon={<LayoutDashboard />} label="Dashboard" active={pathname === '/dashboard'} />
                     <NavItem href="/pets" icon={<PawPrint />} label="My Pets" active={pathname === '/pets'} />
                     <NavItem href="/video" icon={<Video />} label="Video Library" active={pathname === '/video'} />
                     <NavItem href="/alerts" icon={<ShieldAlert />} label="Alerts" active={pathname === '/alerts'} />

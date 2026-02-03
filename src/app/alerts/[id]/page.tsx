@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter, useParams } from 'next/navigation';
 import { alertApi, emergencyContactApi, quickActionApi, type Alert, type EmergencyContact, type QuickAction, type CreateQuickActionRequest } from '@/lib/api';
-import { AlertTriangle, CheckCircle, XCircle, ChevronLeft, Phone, MessageSquare, Send, History, Video, ExternalLink, Bot } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, ChevronLeft, Phone, MessageSquare, Send, History, Video, ExternalLink, Bot, Share2, Download, Mail } from "lucide-react";
 import DashboardLayout from '@/components/DashboardLayout';
 
 export default function AlertDetailPage() {
@@ -24,6 +24,9 @@ export default function AlertDetailPage() {
     const [actionMessage, setActionMessage] = useState('');
     const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
     const [selectedActionType, setSelectedActionType] = useState('sms');
+
+    // Parsed message content for display/editing
+    const [parsedMessage, setParsedMessage] = useState<{ sms_text: string, email_body: string } | null>(null);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -93,20 +96,88 @@ export default function AlertDetailPage() {
         }
     };
 
-    const handleOpenQuickAction = () => {
+    const handleOpenQuickAction = (preGeneratedAction?: QuickAction) => {
         if (!alertData) return;
-
-        // Generate default message
-        const petName = alertData.pet_name || 'your pet';
-        const defaultMsg = `🚨 URGENT: ${petName} is showing unusual behavior (${alertData.alert_type}). Please check PetPulse immediately.`;
-        setActionMessage(defaultMsg);
 
         // Default to first contact if available
         if (contacts.length > 0 && !selectedContactId) {
             setSelectedContactId(contacts[0].id);
         }
 
+        if (preGeneratedAction) {
+            // Parse the JSON message from the pending action
+            try {
+                const content = JSON.parse(preGeneratedAction.message);
+                setParsedMessage(content);
+                // Set initial text based on type (default to SMS text)
+                setActionMessage(content.sms_text || preGeneratedAction.message);
+            } catch (e) {
+                // Fallback if plain text
+                setParsedMessage(null);
+                setActionMessage(preGeneratedAction.message);
+            }
+        } else {
+            // Generate default message (manual override)
+            const petName = alertData.pet_name || 'your pet';
+            const defaultMsg = `🚨 URGENT: ${petName} is showing unusual behavior (${alertData.alert_type}). Please check PetPulse immediately.`;
+            setActionMessage(defaultMsg);
+            setParsedMessage(null);
+        }
+
         setShowQuickActionDialog(true);
+    };
+
+    const handleShare = async (platform: 'whatsapp' | 'email') => {
+        if (!alertData) return;
+
+        const title = `PetPulse Alert: ${alertData.alert_type}`;
+        const text = actionMessage;
+
+        // Try to fetch video file if available
+        let filesArray: File[] = [];
+        if (alertData.video_id) {
+            try {
+                // Fetch video blob
+                // We need an endpoint that returns the raw video or similar. 
+                // Using the stream endpoint: /api/videos/:id/stream
+                const videoUrl = `/api/videos/${alertData.video_id}/stream`;
+                const response = await fetch(videoUrl);
+                const blob = await response.blob();
+                const file = new File([blob], "evidence.mp4", { type: "video/mp4" });
+                filesArray = [file];
+            } catch (e) {
+                console.error("Failed to fetch video for sharing", e);
+            }
+        }
+
+        if (navigator.share && navigator.canShare({ files: filesArray })) {
+            try {
+                await navigator.share({
+                    title: title,
+                    text: text,
+                    files: filesArray
+                });
+            } catch (error) {
+                console.error('Error sharing:', error);
+            }
+        } else {
+            // Fallback for desktop / unsupported
+            if (platform === 'whatsapp') {
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+            } else if (platform === 'email') {
+                window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`, '_blank');
+            }
+
+            // If video exists, trigger download separately as fallback
+            if (alertData.video_id) {
+                const link = document.createElement('a');
+                link.href = `/api/videos/${alertData.video_id}/stream`;
+                link.download = `alert_${alertData.id}.mp4`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
     };
 
     const handleExecuteAction = async () => {
@@ -209,6 +280,31 @@ export default function AlertDetailPage() {
                     {/* Main Content (Left) */}
                     <div className="lg:col-span-8 space-y-6">
 
+                        {/* Video Evidence */}
+                        {alertData.video_id ? (
+                            <div className="p-6 rounded-2xl bg-white border border-neutral-200 shadow-sm overflow-hidden">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Video className="h-5 w-5 text-neutral-900" />
+                                    <h3 className="text-lg font-semibold text-neutral-900">Video Evidence</h3>
+                                </div>
+                                <div className="rounded-xl overflow-hidden bg-black aspect-video relative">
+                                    <video
+                                        controls
+                                        className="w-full h-full object-contain"
+                                        src={`/api/videos/${alertData.video_id}/stream`}
+                                        preload="metadata"
+                                    >
+                                        Your browser does not support the video tag.
+                                    </video>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-6 rounded-2xl bg-white border border-neutral-200 shadow-sm">
+                                <h3 className="text-lg font-semibold text-neutral-900 mb-2">Video Evidence</h3>
+                                <p className="text-neutral-500 text-sm">No video evidence available for this alert.</p>
+                            </div>
+                        )}
+
                         {/* Status Card */}
                         <div className="p-6 rounded-2xl bg-white border border-neutral-200 shadow-sm">
                             <h3 className="text-lg font-semibold text-neutral-900 mb-4">Status & Message</h3>
@@ -245,16 +341,34 @@ export default function AlertDetailPage() {
 
                     {/* Sidebar (Right) */}
                     <div className="lg:col-span-4 space-y-6">
-                        {/* Quick Action Button */}
+
+
+                        {/* Pre-generated Actions (Pending) */}
+                        {quickActions.filter(a => a.status === 'pending').map(action => (
+                            <div key={action.id} className="p-6 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-sm">
+                                <h3 className="text-lg font-semibold text-indigo-900 mb-2">AI Suggested Action</h3>
+                                <p className="text-sm text-indigo-700 mb-4">
+                                    Gemini has prepared a response for <strong>{action.contact_name}</strong>.
+                                </p>
+                                <button
+                                    onClick={() => handleOpenQuickAction(action)}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white border border-indigo-600 rounded-xl hover:bg-indigo-700 transition font-medium"
+                                >
+                                    <MessageSquare className="h-4 w-4" />
+                                    Review & Send
+                                </button>
+                            </div>
+                        ))}
+
+                        {/* General Quick Action Button */}
                         <div className="p-6 rounded-2xl bg-white border border-neutral-200 shadow-sm">
-                            <h3 className="text-lg font-semibold text-neutral-900 mb-4">Quick Response</h3>
-                            <p className="text-sm text-neutral-500 mb-4">Immediately notify default contacts or specialized services.</p>
+                            <h3 className="text-lg font-semibold text-neutral-900 mb-4">Manual Response</h3>
                             <button
-                                onClick={handleOpenQuickAction}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl hover:bg-red-100 transition font-medium"
+                                onClick={() => handleOpenQuickAction()}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white text-neutral-700 border border-neutral-300 rounded-xl hover:bg-neutral-50 transition font-medium"
                             >
                                 <Send className="h-4 w-4" />
-                                Send SOS / Notification
+                                Create New Message
                             </button>
                         </div>
 
@@ -331,26 +445,46 @@ export default function AlertDetailPage() {
                                 />
                             </div>
 
-                            <div className="flex justify-end gap-3">
+                            <div className="flex justify-end gap-3 mt-6">
                                 <button
                                     onClick={() => setShowQuickActionDialog(false)}
                                     className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
                                 >
-                                    Cancel
+                                    Close
                                 </button>
-                                <button
-                                    onClick={handleExecuteAction}
-                                    disabled={loadingAction || !selectedContactId}
-                                    className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                                >
-                                    {loadingAction ? 'Sending...' : 'Send Alert'}
-                                    <Send className="h-4 w-4" />
-                                </button>
+
+                                {parsedMessage ? (
+                                    <>
+                                        <button
+                                            onClick={() => handleShare('whatsapp')}
+                                            className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                                        >
+                                            <Share2 className="h-4 w-4" />
+                                            Share WhatsApp
+                                        </button>
+                                        <button
+                                            onClick={() => handleShare('email')}
+                                            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                        >
+                                            <Mail className="h-4 w-4" />
+                                            Share Email
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={handleExecuteAction}
+                                        disabled={loadingAction || !selectedContactId}
+                                        className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                                    >
+                                        {loadingAction ? 'Sending...' : 'Log & Send'}
+                                        <Send className="h-4 w-4" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
                 )}
             </div>
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }

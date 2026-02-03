@@ -86,6 +86,7 @@ export interface Alert {
     notification_sent: boolean;
     notification_channels: any;
     intervention_action: string | null;
+    video_id: string | null;
 }
 
 export interface AlertListResponse {
