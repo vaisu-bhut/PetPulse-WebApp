@@ -24,6 +24,8 @@ export default function AlertDetailPage() {
     const [actionMessage, setActionMessage] = useState('');
     const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
     const [selectedActionType, setSelectedActionType] = useState('sms');
+    const [isManualEdit, setIsManualEdit] = useState(false);
+    const [activePlatform, setActivePlatform] = useState<'sms' | 'email'>('sms');
 
     // Parsed message content for display/editing
     const [parsedMessage, setParsedMessage] = useState<{ sms_text: string, email_body: string } | null>(null);
@@ -99,24 +101,28 @@ export default function AlertDetailPage() {
     const handleOpenQuickAction = (preGeneratedAction?: QuickAction) => {
         if (!alertData) return;
 
-        // Default to first contact if available
-        if (contacts.length > 0 && !selectedContactId) {
-            setSelectedContactId(contacts[0].id);
+        setIsManualEdit(false);
+        setActivePlatform('sms'); // Default to SMS view
+        let actionToUse = preGeneratedAction;
+
+        // If no explicit action provided, see if we have ANY pending one to start with
+        if (!actionToUse && selectedContactId) {
+            actionToUse = quickActions.find(a => a.emergency_contact_id === selectedContactId && a.status === 'pending');
         }
 
-        if (preGeneratedAction) {
-            // Parse the JSON message from the pending action
-            try {
-                const content = JSON.parse(preGeneratedAction.message);
-                setParsedMessage(content);
-                // Set initial text based on type (default to SMS text)
-                setActionMessage(content.sms_text || preGeneratedAction.message);
-            } catch (e) {
-                // Fallback if plain text
-                setParsedMessage(null);
-                setActionMessage(preGeneratedAction.message);
-            }
+        if (!actionToUse) {
+            actionToUse = quickActions.find(a => a.status === 'pending');
+        }
+
+        if (actionToUse) {
+            setSelectedContactId(actionToUse.emergency_contact_id);
+            updateMessageFromAction(actionToUse, 'sms');
         } else {
+            // Default to first contact if available and no contact selected
+            if (contacts.length > 0 && !selectedContactId) {
+                setSelectedContactId(contacts[0].id);
+            }
+
             // Generate default message (manual override)
             const petName = alertData.pet_name || 'your pet';
             const defaultMsg = `🚨 URGENT: ${petName} is showing unusual behavior (${alertData.alert_type}). Please check PetPulse immediately.`;
@@ -127,11 +133,66 @@ export default function AlertDetailPage() {
         setShowQuickActionDialog(true);
     };
 
+    const updateMessageFromAction = (action: QuickAction, platform: 'sms' | 'email') => {
+        try {
+            const content = JSON.parse(action.message);
+            setParsedMessage(content);
+            if (platform === 'email') {
+                setActionMessage(content.email_body || action.message);
+            } else {
+                setActionMessage(content.sms_text || action.message);
+            }
+        } catch (e) {
+            setParsedMessage(null);
+            setActionMessage(action.message);
+        }
+    };
+
+    // Handle platform tab switch
+    const handlePlatformChange = (platform: 'sms' | 'email') => {
+        if (platform === activePlatform) return;
+
+        setActivePlatform(platform);
+
+        // If we have an AI suggestion and user hasn't edited, swap to the other version
+        if (parsedMessage && !isManualEdit) {
+            if (platform === 'email') {
+                setActionMessage(parsedMessage.email_body || actionMessage);
+            } else {
+                setActionMessage(parsedMessage.sms_text || actionMessage);
+            }
+        }
+    };
+
+    // Sync message if contact changes while dialog is open and user hasn't manually edited
+    useEffect(() => {
+        if (showQuickActionDialog && selectedContactId && !isManualEdit) {
+            // See if there's a pending action for this SPECIFIC contact
+            const action = quickActions.find(a => a.emergency_contact_id === selectedContactId && a.status === 'pending');
+            if (action) {
+                updateMessageFromAction(action, activePlatform);
+            } else {
+                // If no pending action for THIS contact, revert to generic default
+                const petName = alertData?.pet_name || 'your pet';
+                const defaultMsg = `🚨 URGENT: ${petName} is showing unusual behavior (${alertData?.alert_type}). Please check PetPulse immediately.`;
+                setActionMessage(defaultMsg);
+                setParsedMessage(null);
+            }
+        }
+    }, [selectedContactId, showQuickActionDialog, quickActions, alertData, isManualEdit, activePlatform]);
+
     const handleShare = async (platform: 'whatsapp' | 'email') => {
         if (!alertData) return;
 
         const title = `PetPulse Alert: ${alertData.alert_type}`;
+
+        // Platforms are now synchronized with the textarea (actionMessage)
         const text = actionMessage;
+
+        // Find contact details
+        const contact = contacts.find(c => c.id === selectedContactId);
+        const phoneNumber = contact?.phone || '';
+        const emailAddress = contact?.email || '';
 
         // Try to fetch video file if available
         let filesArray: File[] = [];
@@ -163,9 +224,9 @@ export default function AlertDetailPage() {
         } else {
             // Fallback for desktop / unsupported
             if (platform === 'whatsapp') {
-                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(text)}`, '_blank');
             } else if (platform === 'email') {
-                window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`, '_blank');
+                window.open(`mailto:${emailAddress}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(text)}`, '_blank');
             }
 
             // If video exists, trigger download separately as fallback
@@ -379,21 +440,30 @@ export default function AlertDetailPage() {
                                 <h3 className="text-lg font-semibold text-neutral-900">Action History</h3>
                             </div>
 
-                            {quickActions.length === 0 ? (
+                            {quickActions.filter(a => a.status !== 'pending').length === 0 ? (
                                 <p className="text-sm text-neutral-500">No actions taken yet.</p>
                             ) : (
                                 <div className="space-y-4">
-                                    {quickActions.map(action => (
-                                        <div key={action.id} className="relative border-l-2 border-neutral-200 pl-4 pb-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-xs font-bold text-neutral-700">{action.action_type.toUpperCase()}</span>
-                                                <span className="text-xs text-neutral-400">{new Date(action.created_at).toLocaleTimeString()}</span>
+                                    {quickActions.filter(a => a.status !== 'pending').map(action => {
+                                        let displayMsg = action.message;
+                                        try {
+                                            const parsed = JSON.parse(action.message);
+                                            displayMsg = parsed.sms_text || action.message;
+                                        } catch (e) {
+                                            // Keep original if not JSON
+                                        }
+                                        return (
+                                            <div key={action.id} className="relative border-l-2 border-neutral-200 pl-4 pb-1">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-xs font-bold text-neutral-700">{action.action_type.toUpperCase()}</span>
+                                                    <span className="text-xs text-neutral-400">{new Date(action.created_at).toLocaleTimeString()}</span>
+                                                </div>
+                                                <p className="text-xs text-neutral-600 mb-1">To: {action.contact_name}</p>
+                                                <p className="text-xs text-neutral-500 italic">"{displayMsg}"</p>
+                                                <p className="text-xs mt-1 font-medium text-indigo-600">{action.status}</p>
                                             </div>
-                                            <p className="text-xs text-neutral-600 mb-1">To: {action.contact_name}</p>
-                                            <p className="text-xs text-neutral-500 italic">"{action.message}"</p>
-                                            <p className="text-xs mt-1 font-medium text-indigo-600">{action.status}</p>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -432,16 +502,61 @@ export default function AlertDetailPage() {
                                         <option key={c.id} value={c.id}>{c.name} ({c.contact_type})</option>
                                     ))}
                                 </select>
+
+                                {/* Contact Details Display */}
+                                {selectedContactId && contacts.find(c => c.id === selectedContactId) && (
+                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 bg-neutral-50 p-2 rounded-lg border border-neutral-100">
+                                        <div className="flex items-center gap-1">
+                                            <Phone className="h-3 w-3" />
+                                            {contacts.find(c => c.id === selectedContactId)?.phone}
+                                        </div>
+                                        {contacts.find(c => c.id === selectedContactId)?.email ? (
+                                            <div className="flex items-center gap-1">
+                                                <Mail className="h-3 w-3" />
+                                                {contacts.find(c => c.id === selectedContactId)?.email}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1 text-neutral-400 italic">
+                                                <Mail className="h-3 w-3 opacity-50" />
+                                                No email provided
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Message */}
                             <div className="mb-6">
-                                <label className="mb-2 block text-sm font-medium text-neutral-700">Message</label>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex bg-neutral-100 p-1 rounded-lg">
+                                        <button
+                                            onClick={() => handlePlatformChange('sms')}
+                                            className={`px-3 py-1 text-xs font-semibold rounded-md transition ${activePlatform === 'sms' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                        >
+                                            SMS / WhatsApp
+                                        </button>
+                                        <button
+                                            onClick={() => handlePlatformChange('email')}
+                                            className={`px-3 py-1 text-xs font-semibold rounded-md transition ${activePlatform === 'email' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                                        >
+                                            Email
+                                        </button>
+                                    </div>
+                                    {(parsedMessage || isManualEdit) && (
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${parsedMessage ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-500'}`}>
+                                            {parsedMessage ? '✨ AI Suggestion' : 'Custom'}
+                                        </span>
+                                    )}
+                                </div>
                                 <textarea
-                                    className="w-full rounded-lg border border-neutral-300 bg-white p-3 text-neutral-900 focus:border-indigo-500 focus:outline-none"
-                                    rows={4}
+                                    className="w-full rounded-lg border border-neutral-300 bg-white p-3 text-sm text-neutral-900 focus:border-indigo-500 focus:outline-none transition-all"
+                                    rows={activePlatform === 'email' ? 8 : 4}
                                     value={actionMessage}
-                                    onChange={(e) => setActionMessage(e.target.value)}
+                                    onChange={(e) => {
+                                        setActionMessage(e.target.value);
+                                        setIsManualEdit(true);
+                                        setParsedMessage(null);
+                                    }}
                                 />
                             </div>
 
@@ -464,7 +579,8 @@ export default function AlertDetailPage() {
                                         </button>
                                         <button
                                             onClick={() => handleShare('email')}
-                                            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                            disabled={!contacts.find(c => c.id === selectedContactId)?.email}
+                                            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <Mail className="h-4 w-4" />
                                             Share Email
