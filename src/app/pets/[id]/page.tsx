@@ -26,7 +26,7 @@ export default function PetProfilePage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-    const VIDEOS_PER_PAGE = 2; // Compact limit
+    const VIDEOS_PER_PAGE = 6; // 3x2 Grid
 
     // Alerts State
     const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -397,16 +397,23 @@ export default function PetProfilePage() {
                             ) : videos.length === 0 ? (
                                 <p className="text-sm text-neutral-400 text-center py-4">No recent videos.</p>
                             ) : (
-                                <div className="grid grid-cols-2 gap-3">
-                                    {videos.slice(0, 2).map(video => (
-                                        <div key={video.id} className="relative aspect-video rounded-lg overflow-hidden border border-neutral-200 bg-black group max-h-[160px]">
-                                            <div onClick={() => handlePlayVideo(video)} className="w-full h-full cursor-pointer relative bg-neutral-900">
-                                                <div className="absolute inset-0 flex items-center justify-center z-10">
-                                                    <div className="bg-white/90 p-1.5 rounded-full shadow-lg group-hover:scale-110 transition"><Play className="h-3 w-3 text-indigo-600" /></div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {videos.slice(0, 6).map(video => (
+                                        <div key={video.id} className="relative aspect-video rounded-xl overflow-hidden border border-neutral-100 bg-neutral-900 group shadow-sm transition-all hover:shadow-md hover:border-indigo-100">
+                                            <div onClick={() => handlePlayVideo(video)} className="w-full h-full cursor-pointer relative">
+                                                <div className="absolute inset-0 flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                                                    <div className="bg-white p-2 rounded-full shadow-xl scale-90 group-hover:scale-100 transition-transform">
+                                                        <Play className="h-4 w-4 text-indigo-600 fill-indigo-600" />
+                                                    </div>
                                                 </div>
-                                                <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                                                    <p className="text-[10px] text-white font-medium truncate">{video.description || "No description"}</p>
-                                                    <p className="text-[10px] text-neutral-300">{new Date(video.created_at).toLocaleDateString()}</p>
+                                                <div className="absolute top-2 right-2 z-10">
+                                                    <div className="px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[8px] font-bold text-white uppercase tracking-tight">
+                                                        {new Date(video.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                                    </div>
+                                                </div>
+                                                <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                                                    <p className="text-[10px] text-white font-bold truncate leading-tight">{video.description || "Capture Sequence"}</p>
+                                                    <p className="text-[8px] text-neutral-300 font-medium uppercase tracking-widest mt-0.5">PetPulse Cam {video.id.toString().slice(-1)}</p>
                                                 </div>
                                             </div>
                                         </div>

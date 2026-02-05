@@ -87,6 +87,7 @@ export interface Alert {
     notification_channels: any;
     intervention_action: string | null;
     video_id: string | null;
+    resolved_at: string | null;
 }
 
 export interface AlertListResponse {
@@ -362,10 +363,12 @@ export const alertApi = {
     },
 
     // Resolve an alert
-    resolve: async (alertId: string): Promise<{ status: string }> => {
+    resolve: async (alertId: string, note?: string): Promise<{ status: string }> => {
         const response = await fetch(`${API_BASE}/alerts/${alertId}/resolve`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
+            body: JSON.stringify({ note }),
         });
         return handleResponse<{ status: string }>(response);
     },
